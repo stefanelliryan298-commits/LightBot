@@ -270,3 +270,4 @@ Per supporto, unisciti al nostro server Discord o apri una issue su GitHub.
 
 **Creato con ❤️ per la community Discord italiana**
 "# LightBot" 
+"# LightBot" 
