@@ -1,51 +1,34 @@
 // utils/db.js
-const fs   = require('fs');
-const path = require('path');
+const mongoose = require('mongoose');
 
-const DB_PATH = path.join(__dirname, '..', 'data', 'servers.json');
+let isConnected = false;
 
-// Assicura che la cartella data/ esista
-function ensureFile() {
-    const dir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dir))  fs.mkdirSync(dir, { recursive: true });
-    if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, '{}', 'utf-8');
-}
+async function connectDB() {
+    if (isConnected) return;
 
-// Legge tutto il DB
-function readAll() {
-    ensureFile();
     try {
-        return JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
-    } catch {
-        return {};
+        await mongoose.connect(process.env.MONGO_URI, {
+            serverSelectionTimeoutMS: 10000,
+            socketTimeoutMS: 45000,
+            connectTimeoutMS: 10000,
+        });
+
+        isConnected = true;
+        console.log('✅ MongoDB connesso correttamente');
+    } catch (err) {
+        console.error('❌ Errore connessione MongoDB:', err.message);
+        process.exit(1);
     }
+
+    mongoose.connection.on('disconnected', () => {
+        console.warn('⚠️  MongoDB disconnesso, riconnessione in corso...');
+        isConnected = false;
+        setTimeout(connectDB, 5000);
+    });
+
+    mongoose.connection.on('error', err => {
+        console.error('❌ MongoDB errore:', err.message);
+    });
 }
 
-// Scrive tutto il DB
-function writeAll(data) {
-    ensureFile();
-    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
-}
-
-// Ritorna i dati di un server (crea il record se non esiste)
-function getServer(guildId) {
-    const all = readAll();
-    if (!all[guildId]) all[guildId] = {};
-    return all[guildId];
-}
-
-// Salva i dati di un server
-function setServer(guildId, data) {
-    const all = readAll();
-    all[guildId] = data;
-    writeAll(all);
-}
-
-// Elimina i dati di un server
-function deleteServer(guildId) {
-    const all = readAll();
-    delete all[guildId];
-    writeAll(all);
-}
-
-module.exports = { getServer, setServer, deleteServer };
+module.exports = { connectDB };

@@ -7,7 +7,7 @@ const {
     ActionRowBuilder,
     EmbedBuilder
 } = require('discord.js');
-const db = require('../../utils/db');
+const ServerConfig = require('../../models/ServerConfig');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -64,26 +64,29 @@ module.exports = {
         const descrizione = interaction.fields.getTextInputValue('descrizione');
         const link        = interaction.fields.getTextInputValue('link') || null;
 
-        const managerId  = interaction.customId.split('-')[1];
+        const managerId   = interaction.customId.split('-')[1];
         const managerUser = managerId !== 'none'
             ? await interaction.client.users.fetch(managerId).catch(() => null)
             : null;
 
-        const config      = db.getServer(interaction.guild.id);
-        const partnerRole = config?.pingRole || null;
-        const partnerChannel = config?.partnerChannel || null;
+        // Recupera config server da MongoDB
+        let config = await ServerConfig.findOne({ guildId: interaction.guild.id });
+        if (!config) {
+            config = new ServerConfig({ guildId: interaction.guild.id });
+        }
 
-        // Salva il partner nel DB
-        if (!config.partners) config.partners = [];
+        // Salva il partner
         config.partners.push({
-            title: titolo,
+            title:       titolo,
             description: descrizione,
-            link: link,
-            manager: managerUser ? managerUser.tag : null,
-            author: interaction.user.tag,
-            addedAt: Date.now()
+            link:        link,
+            manager:     managerUser ? managerUser.tag : null,
+            author:      interaction.user.tag,
         });
-        db.setServer(interaction.guild.id, config);
+        await config.save();
+
+        const partnerRole    = config.pingRole;
+        const partnerChannel = config.partnerChannel;
 
         const embed = new EmbedBuilder()
             .setTitle(`🤝 Nuova Partnership — ${titolo}`)
@@ -96,26 +99,10 @@ module.exports = {
                     value: link ? `[Clicca qui per unirti](${link})` : '`Nessun link fornito`',
                     inline: false
                 },
-                {
-                    name: '👤 Inviato da',
-                    value: `${interaction.user}`,
-                    inline: true
-                },
-                {
-                    name: '🏠 Server',
-                    value: `\`${interaction.guild.name}\``,
-                    inline: true
-                },
-                {
-                    name: '📋 Manager',
-                    value: managerUser ? `${managerUser}` : '`Nessuno assegnato`',
-                    inline: true
-                },
-                {
-                    name: '🔔 Ping',
-                    value: partnerRole ? `<@&${partnerRole}>` : '`Nessun ruolo impostato`',
-                    inline: true
-                }
+                { name: '👤 Inviato da',  value: `${interaction.user}`,                                    inline: true },
+                { name: '🏠 Server',      value: `\`${interaction.guild.name}\``,                          inline: true },
+                { name: '📋 Manager',     value: managerUser ? `${managerUser}` : '`Nessuno assegnato`',  inline: true },
+                { name: '🔔 Ping',        value: partnerRole ? `<@&${partnerRole}>` : '`Non impostato`',  inline: true }
             )
             .setFooter({ text: `Partnership • ${interaction.guild.name}`, iconURL: interaction.guild.iconURL({ dynamic: true }) })
             .setTimestamp();
@@ -126,7 +113,7 @@ module.exports = {
 
         if (!targetChannel) {
             return interaction.reply({
-                content: '❌ Il canale partnership non è stato trovato. Usa `/partner-setup` per configurarlo.',
+                content: '❌ Canale partnership non trovato. Usa `/partner-setup set` per configurarlo.',
                 ephemeral: true
             });
         }
@@ -137,7 +124,7 @@ module.exports = {
         });
 
         await interaction.reply({
-            content: `✅ Partnership **${titolo}** inviata con successo in ${targetChannel}!`,
+            content: `✅ Partnership **${titolo}** inviata in ${targetChannel}!`,
             ephemeral: true
         });
     }
