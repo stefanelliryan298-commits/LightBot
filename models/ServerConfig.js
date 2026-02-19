@@ -2,7 +2,7 @@
 const { Schema, model, models } = require('mongoose');
 
 const partnerSchema = new Schema({
-    title:       { type: String, required: true },
+    title:       { type: String, required: false },
     description: { type: String, default: '' },
     link:        { type: String, default: null },
     manager:     { type: String, default: null },  // tag utente

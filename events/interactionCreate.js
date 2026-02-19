@@ -122,6 +122,36 @@ module.exports = {
         }
 
         // ═══════════════════════════════════════════════════════
+        //  📋 GESTIONE MODAL SUBMIT
+        // ═══════════════════════════════════════════════════════
+        if (interaction.isModalSubmit()) {
+            if (interaction.customId.startsWith('partnershipModal-')) {
+                const command = client.commands.get('partnership');
+
+                if (!command?.handleModalSubmit) return;
+
+                try {
+                    await command.handleModalSubmit(interaction);
+                } catch (error) {
+                    console.error('❌ Errore modal partnership:', error);
+
+                    const errorEmbed = new EmbedBuilder()
+                        .setColor(0xFF0000)
+                        .setTitle('❌ Errore')
+                        .setDescription('Si è verificato un errore durante l\'invio della partnership!')
+                        .setTimestamp();
+
+                    if (interaction.replied || interaction.deferred) {
+                        await interaction.followUp({ embeds: [errorEmbed], ephemeral: true });
+                    } else {
+                        await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+                    }
+                }
+            }
+            return;
+        }
+
+        // ═══════════════════════════════════════════════════════
         //  🔘 GESTIONE CONTEXT MENU (opzionale)
         // ═══════════════════════════════════════════════════════
         if (interaction.isContextMenuCommand()) {

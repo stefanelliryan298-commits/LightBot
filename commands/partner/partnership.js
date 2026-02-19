@@ -27,42 +27,23 @@ module.exports = {
             .setCustomId(`partnershipModal-${manager ? manager.id : 'none'}`)
             .setTitle('📋 Nuova Partnership');
 
-        const titoloInput = new TextInputBuilder()
-            .setCustomId('titolo')
-            .setLabel('Titolo del server / progetto')
-            .setPlaceholder('Es. Server Gaming XYZ')
-            .setStyle(TextInputStyle.Short)
-            .setMaxLength(100)
-            .setRequired(true);
-
         const descrizioneInput = new TextInputBuilder()
             .setCustomId('descrizione')
-            .setLabel('Descrizione')
-            .setPlaceholder('Descrivi il server o il progetto in modo chiaro...')
+            .setLabel('Descrizione della partnership')
+            .setPlaceholder('Scrivi qui il testo della tua partnership...')
             .setStyle(TextInputStyle.Paragraph)
-            .setMaxLength(1000)
+            .setMaxLength(2000)
             .setRequired(true);
 
-        const linkInput = new TextInputBuilder()
-            .setCustomId('link')
-            .setLabel('Link di invito (opzionale)')
-            .setPlaceholder('https://discord.gg/...')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(false);
-
         modal.addComponents(
-            new ActionRowBuilder().addComponents(titoloInput),
-            new ActionRowBuilder().addComponents(descrizioneInput),
-            new ActionRowBuilder().addComponents(linkInput)
+            new ActionRowBuilder().addComponents(descrizioneInput)
         );
 
         await interaction.showModal(modal);
     },
 
     async handleModalSubmit(interaction) {
-        const titolo      = interaction.fields.getTextInputValue('titolo');
         const descrizione = interaction.fields.getTextInputValue('descrizione');
-        const link        = interaction.fields.getTextInputValue('link') || null;
 
         const managerId   = interaction.customId.split('-')[1];
         const managerUser = managerId !== 'none'
@@ -75,11 +56,9 @@ module.exports = {
             config = new ServerConfig({ guildId: interaction.guild.id });
         }
 
-        // Salva il partner
+        // Salva il partner (senza title)
         config.partners.push({
-            title:       titolo,
             description: descrizione,
-            link:        link,
             manager:     managerUser ? managerUser.tag : null,
             author:      interaction.user.tag,
         });
@@ -89,22 +68,13 @@ module.exports = {
         const partnerChannel = config.partnerChannel;
 
         const embed = new EmbedBuilder()
-            .setTitle(`🤝 Nuova Partnership — ${titolo}`)
-            .setDescription(descrizione)
             .setColor(0xFF66CC)
-            .setThumbnail(interaction.guild.iconURL({ dynamic: true }))
             .addFields(
-                {
-                    name: '🔗 Link',
-                    value: link ? `[Clicca qui per unirti](${link})` : '`Nessun link fornito`',
-                    inline: false
-                },
-                { name: '👤 Inviato da',  value: `${interaction.user}`,                                    inline: true },
-                { name: '🏠 Server',      value: `\`${interaction.guild.name}\``,                          inline: true },
-                { name: '📋 Manager',     value: managerUser ? `${managerUser}` : '`Nessuno assegnato`',  inline: true },
-                { name: '🔔 Ping',        value: partnerRole ? `<@&${partnerRole}>` : '`Non impostato`',  inline: true }
+                { name: '👤 Inviato da', value: `${interaction.user}`,                                    inline: true },
+                { name: '🏠 Server',     value: `\`${interaction.guild.name}\``,                          inline: true },
+                { name: '📋 Manager',    value: managerUser ? `${managerUser}` : '`Nessuno assegnato`',  inline: true },
+                { name: '🔔 Ping',       value: partnerRole ? `<@&${partnerRole}>` : '`Non impostato`',  inline: true }
             )
-            .setFooter({ text: `Partnership • ${interaction.guild.name}`, iconURL: interaction.guild.iconURL({ dynamic: true }) })
             .setTimestamp();
 
         const targetChannel = partnerChannel
@@ -114,18 +84,18 @@ module.exports = {
         if (!targetChannel) {
             return interaction.reply({
                 content: '❌ Canale partnership non trovato. Usa `/partner-setup set` per configurarlo.',
-                ephemeral: true
+                flags: 64
             });
         }
 
         await targetChannel.send({
-            content: partnerRole ? `<@&${partnerRole}>` : '',
+            content: `${partnerRole ? `<@&${partnerRole}>` : ''}\n${descrizione}`.trim(),
             embeds: [embed]
         });
 
         await interaction.reply({
-            content: `✅ Partnership **${titolo}** inviata in ${targetChannel}!`,
-            ephemeral: true
+            content: `✅ Partnership inviata con successo in ${targetChannel}!`,
+            flags: 64
         });
     }
 };

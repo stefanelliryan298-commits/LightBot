@@ -1,105 +1,161 @@
-// commands/partner/partnership.js
+// commands/partner/partner-setup.js
 const {
     SlashCommandBuilder,
-    ModalBuilder,
-    TextInputBuilder,
-    TextInputStyle,
-    ActionRowBuilder,
-    EmbedBuilder
+    EmbedBuilder,
+    PermissionFlagsBits,
+    ChannelType
 } = require('discord.js');
 const ServerConfig = require('../../models/ServerConfig');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('partnership')
-        .setDescription('Invia una richiesta di partnership')
-        .addUserOption(option =>
-            option
-                .setName('manager')
-                .setDescription('Il manager con cui stai effettuando la partnership')
-                .setRequired(false)
+        .setName('partner-setup')
+        .setDescription('Configura il sistema di partnership per questo server')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addSubcommand(sub =>
+            sub
+                .setName('set')
+                .setDescription('Imposta le opzioni di partnership')
+                .addChannelOption(opt =>
+                    opt.setName('canale').setDescription('Canale dove verranno inviate le partnership')
+                        .addChannelTypes(ChannelType.GuildText).setRequired(true)
+                )
+                .addRoleOption(opt =>
+                    opt.setName('ruolo').setDescription('Ruolo da pingare per ogni nuova partnership').setRequired(true)
+                )
+                .addStringOption(opt =>
+                    opt.setName('ping_type').setDescription('Tipo di ping da usare quando si raggiunge la soglia membri')
+                        .setRequired(true)
+                        .addChoices(
+                            { name: '🔕 Nessun ping extra', value: 'none' },
+                            { name: '📢 @here',             value: 'here' },
+                            { name: '📣 @everyone',         value: 'everyone' }
+                        )
+                )
+                .addIntegerOption(opt =>
+                    opt.setName('soglia_membri').setDescription('Membri minimi per attivare il ping scelto')
+                        .setRequired(false).setMinValue(1)
+                )
+                .addRoleOption(opt =>
+                    opt.setName('ruolo_manager').setDescription('Ruolo che può usare /partnership').setRequired(false)
+                )
+        )
+        .addSubcommand(sub =>
+            sub.setName('view').setDescription('Visualizza la configurazione attuale della partnership')
+        )
+        .addSubcommand(sub =>
+            sub.setName('reset').setDescription('Reimposta tutta la configurazione partnership di questo server')
         ),
 
     async execute(interaction) {
-        const manager = interaction.options.getUser('manager');
+        const sub     = interaction.options.getSubcommand();
+        const guildId = interaction.guild.id;
 
-        const modal = new ModalBuilder()
-            .setCustomId(`partnershipModal-${manager ? manager.id : 'none'}`)
-            .setTitle('📋 Nuova Partnership');
+        // ─── SET ────────────────────────────────────────────────────────────────
+        if (sub === 'set') {
+            const canale       = interaction.options.getChannel('canale');
+            const ruolo        = interaction.options.getRole('ruolo');
+            const pingType     = interaction.options.getString('ping_type');
+            const sogliaMemb   = interaction.options.getInteger('soglia_membri') ?? null;
+            const ruoloManager = interaction.options.getRole('ruolo_manager') ?? null;
 
-        const descrizioneInput = new TextInputBuilder()
-            .setCustomId('descrizione')
-            .setLabel('Descrizione della partnership')
-            .setPlaceholder('Scrivi qui il testo della tua partnership...')
-            .setStyle(TextInputStyle.Paragraph)
-            .setMaxLength(2000)
-            .setRequired(true);
+            if (pingType !== 'none' && !sogliaMemb) {
+                return interaction.reply({
+                    content: '❌ Devi specificare una **soglia membri** se vuoi usare `@here` o `@everyone`.',
+                    ephemeral: true
+                });
+            }
 
-        modal.addComponents(
-            new ActionRowBuilder().addComponents(descrizioneInput)
-        );
+            await ServerConfig.findOneAndUpdate(
+                { guildId },
+                {
+                    guildId,
+                    partnerChannel:  canale.id,
+                    pingRole:        ruolo.id,
+                    pingType,
+                    memberThreshold: sogliaMemb,
+                    managerRole:     ruoloManager ? ruoloManager.id : null,
+                },
+                { upsert: true, new: true }
+            );
 
-        await interaction.showModal(modal);
-    },
+            const pingLabel = { none: '🔕 Nessun ping extra', here: '📢 @here', everyone: '📣 @everyone' }[pingType];
 
-    async handleModalSubmit(interaction) {
-        const descrizione = interaction.fields.getTextInputValue('descrizione');
+            const confirmEmbed = new EmbedBuilder()
+                .setTitle('✅ Configurazione Partnership Salvata')
+                .setColor(0x57F287)
+                .setThumbnail(interaction.guild.iconURL({ dynamic: true }))
+                .setDescription('Le impostazioni sono state aggiornate con successo:')
+                .addFields(
+                    { name: '📺 Canale Partnership', value: `${canale}`,                                                inline: true },
+                    { name: '🔔 Ruolo Ping',         value: `${ruolo}`,                                                inline: true },
+                    { name: '📋 Ruolo Manager',      value: ruoloManager ? `${ruoloManager}` : '`Non impostato`',     inline: true },
+                    { name: '📣 Tipo di Ping Extra', value: `\`${pingLabel}\``,                                        inline: true },
+                    {
+                        name: '👥 Soglia Membri',
+                        value: sogliaMemb ? `\`${sogliaMemb.toLocaleString()} membri\`` : '`—`',
+                        inline: true
+                    }
+                )
+                .setFooter({ text: `Configurato da ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+                .setTimestamp();
 
-        const managerId   = interaction.customId.split('-')[1];
-        const managerUser = managerId !== 'none'
-            ? await interaction.client.users.fetch(managerId).catch(() => null)
-            : null;
-
-        // Recupera config server da MongoDB
-        let config = await ServerConfig.findOne({ guildId: interaction.guild.id });
-        if (!config) {
-            config = new ServerConfig({ guildId: interaction.guild.id });
+            return interaction.reply({ embeds: [confirmEmbed], ephemeral: true });
         }
 
-        // Salva il partner
-        config.partners.push({
-            description: descrizione,
-            manager:     managerUser ? managerUser.tag : null,
-            author:      interaction.user.tag,
-        });
-        await config.save();
+        // ─── VIEW ───────────────────────────────────────────────────────────────
+        if (sub === 'view') {
+            const config = await ServerConfig.findOne({ guildId });
 
-        const partnerRole    = config.pingRole;
-        const partnerChannel = config.partnerChannel;
+            if (!config?.partnerChannel) {
+                return interaction.reply({
+                    content: '❌ Nessuna configurazione trovata. Usa `/partner-setup set` per iniziare.',
+                    ephemeral: true
+                });
+            }
 
-        const embed = new EmbedBuilder()
-            .setTitle('🤝 Nuova Partnership')
-            .setDescription(descrizione)
-            .setColor(0xFF66CC)
-            .setThumbnail(interaction.guild.iconURL({ dynamic: true }))
-            .addFields(
-                { name: '👤 Inviato da', value: `${interaction.user}`,                                   inline: true },
-                { name: '🏠 Server',     value: `\`${interaction.guild.name}\``,                         inline: true },
-                { name: '📋 Manager',    value: managerUser ? `${managerUser}` : '`Nessuno assegnato`', inline: true },
-                { name: '🔔 Ping',       value: partnerRole ? `<@&${partnerRole}>` : '`Non impostato`', inline: true }
-            )
-            .setFooter({ text: `Partnership • ${interaction.guild.name}`, iconURL: interaction.guild.iconURL({ dynamic: true }) })
-            .setTimestamp();
+            const pingLabel = { none: '🔕 Nessun ping extra', here: '📢 @here', everyone: '📣 @everyone' }[config.pingType || 'none'];
 
-        const targetChannel = partnerChannel
-            ? interaction.guild.channels.cache.get(partnerChannel)
-            : interaction.channel;
+            const viewEmbed = new EmbedBuilder()
+                .setTitle('⚙️ Configurazione Partnership')
+                .setColor(0x5865F2)
+                .setThumbnail(interaction.guild.iconURL({ dynamic: true }))
+                .addFields(
+                    { name: '📺 Canale',          value: config.partnerChannel  ? `<#${config.partnerChannel}>`  : '`Non impostato`', inline: true },
+                    { name: '🔔 Ruolo Ping',      value: config.pingRole        ? `<@&${config.pingRole}>`       : '`Non impostato`', inline: true },
+                    { name: '📋 Ruolo Manager',   value: config.managerRole     ? `<@&${config.managerRole}>`    : '`Non impostato`', inline: true },
+                    { name: '📣 Ping Extra',       value: `\`${pingLabel}\``,                                                         inline: true },
+                    { name: '👥 Soglia Membri',   value: config.memberThreshold ? `\`${config.memberThreshold.toLocaleString()}\`` : '`—`', inline: true },
+                    { name: '🤝 Partner Totali',  value: `\`${config.partners?.length ?? 0}\``,                                      inline: true }
+                )
+                .setFooter({ text: interaction.guild.name, iconURL: interaction.guild.iconURL({ dynamic: true }) })
+                .setTimestamp();
 
-        if (!targetChannel) {
-            return interaction.reply({
-                content: '❌ Canale partnership non trovato. Usa `/partner-setup set` per configurarlo.',
-                ephemeral: true
-            });
+            return interaction.reply({ embeds: [viewEmbed], ephemeral: true });
         }
 
-        await targetChannel.send({
-            content: partnerRole ? `<@&${partnerRole}>` : '',
-            embeds: [embed]
-        });
+        // ─── RESET ──────────────────────────────────────────────────────────────
+        if (sub === 'reset') {
+            await ServerConfig.findOneAndUpdate(
+                { guildId },
+                {
+                    partnerChannel:  null,
+                    pingRole:        null,
+                    pingType:        'none',
+                    memberThreshold: null,
+                    managerRole:     null,
+                },
+                { upsert: true }
+            );
 
-        await interaction.reply({
-            content: `✅ Partnership inviata con successo in ${targetChannel}!`,
-            ephemeral: true
-        });
+            const resetEmbed = new EmbedBuilder()
+                .setTitle('🗑️ Configurazione Resettata')
+                .setDescription('Tutte le impostazioni di partnership sono state rimosse.\nUsa `/partner-setup set` per configurare di nuovo il sistema.')
+                .setColor(0xED4245)
+                .setFooter({ text: `Reset da ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+                .setTimestamp();
+
+            return interaction.reply({ embeds: [resetEmbed], ephemeral: true });
+        }
     }
 };
