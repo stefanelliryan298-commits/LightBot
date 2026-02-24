@@ -14,6 +14,7 @@ if (process.env.YOUTUBE_COOKIE) {
 }
 
 const { Client, GatewayIntentBits, Collection, REST, Routes, ActivityType } = require('discord.js');
+const antinuke = require('./events/antinuke');
 const { Player } = require('discord-player');
 const mongoose = require('mongoose');
 const fs = require('fs');
@@ -215,6 +216,16 @@ client.once('clientReady', async () => {
     console.log(`║  ⚙️  Ambiente: ${config.environment.padEnd(24)} ║`);
     console.log(`║  🗄️  MongoDB: ${(isMongoConnected ? 'Connesso ✅' : 'Non configurato').padEnd(24)} ║`);
     console.log('╚════════════════════════════════════════╝\n');
+
+    // ── Anti-Nuke (registrazione manuale multi-evento) ──────────────────────
+    antinuke.register(client);
+    console.log('   🛡️  Anti-Nuke registrato!\n');
+
+    // ── Anti-Raid reset event ───────────────────────────────────────────────
+    const guildMemberAddEvent = require('./events/guildMemberAdd');
+    client.on('antiraidReset', (guildId) => {
+        guildMemberAddEvent.resetGuild(guildId);
+    });
 
    /* 
     // ========== INIZIALIZZA DISCORD PLAYER ==========
