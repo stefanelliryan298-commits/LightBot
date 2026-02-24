@@ -8,9 +8,30 @@ const {
     StreamType
 } = require('@discordjs/voice');
 const YTDlpWrap = require('yt-dlp-wrap').default;
-const ytdlp = new YTDlpWrap();
 const { EmbedBuilder } = require('discord.js');
 const { spawn } = require('child_process');
+
+// Forza ffmpeg-static se ffmpeg non è nel sistema
+const ffmpegPath = (() => {
+    try {
+        return require('ffmpeg-static');
+    } catch {
+        return 'ffmpeg';
+    }
+})();
+
+// Trova yt-dlp nel sistema o nel path locale
+const ytdlpPath = (() => {
+    try {
+        const which = require('child_process').execSync('which yt-dlp').toString().trim();
+        return which || 'yt-dlp';
+    } catch {
+        return 'yt-dlp';
+    }
+})();
+
+console.log(`🔧 FFmpeg path: ${ffmpegPath}`);
+console.log(`🔧 yt-dlp path: ${ytdlpPath}`);
 
 class MusicQueue {
     constructor(guildId, voiceChannel, textChannel, config) {
@@ -93,7 +114,6 @@ class MusicQueue {
         console.log(`\n🎵 Riproduzione: ${song.title}`);
 
         try {
-            // Usa yt-dlp con pipe diretto a ffmpeg
             const stream = await this.getStreamFromYtdlp(song.url);
 
             const resource = createAudioResource(stream, {
@@ -131,14 +151,10 @@ class MusicQueue {
         }
     }
 
-    /**
-     * Ottiene lo stream da yt-dlp con ffmpeg per conversione corretta
-     */
     async getStreamFromYtdlp(url) {
         return new Promise((resolve, reject) => {
             try {
-                // Spawn yt-dlp process
-                const ytdlpProcess = spawn('yt-dlp', [
+                const ytdlpProcess = spawn(ytdlpPath, [
                     url,
                     '-f', 'bestaudio',
                     '--quiet',
@@ -149,9 +165,7 @@ class MusicQueue {
                     windowsHide: true
                 });
 
-                // Pipe yt-dlp output a ffmpeg
-                // Usa wav come formato intermedio (più stabile)
-                const ffmpegProcess = spawn('ffmpeg', [
+                const ffmpegProcess = spawn(ffmpegPath, [
                     '-i', 'pipe:0',
                     '-f', 'wav',
                     '-acodec', 'pcm_s16le',
@@ -163,13 +177,7 @@ class MusicQueue {
                     windowsHide: true
                 });
 
-                // Connetti i processi
                 ytdlpProcess.stdout.pipe(ffmpegProcess.stdin);
-
-                // Gestisci errori yt-dlp
-                ytdlpProcess.stderr.on('data', (data) => {
-                    // Ignora stderr di yt-dlp
-                });
 
                 ytdlpProcess.on('error', (error) => {
                     console.error('❌ Errore yt-dlp:', error);
@@ -177,9 +185,7 @@ class MusicQueue {
                     reject(error);
                 });
 
-                // Gestisci errori ffmpeg
                 ffmpegProcess.stderr.on('data', (data) => {
-                    // Ignora i messaggi di ffmpeg
                     const message = data.toString().toLowerCase();
                     if (message.includes('error')) {
                         console.error('❌ FFmpeg:', data.toString());
