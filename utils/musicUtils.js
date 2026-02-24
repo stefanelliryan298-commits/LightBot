@@ -1,6 +1,20 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const play = require('play-dl');
 
+// Inizializza cookie YouTube
+(async () => {
+    if (process.env.YOUTUBE_COOKIE) {
+        await play.setToken({
+            youtube: {
+                cookie: process.env.YOUTUBE_COOKIE
+            }
+        });
+        console.log('✅ Cookie YouTube caricati');
+    } else {
+        console.warn('⚠️ YOUTUBE_COOKIE non trovato nel .env');
+    }
+})();
+
 /**
  * Cerca video su YouTube con play-dl
  */
