@@ -45,6 +45,12 @@ module.exports = {
     async handleModalSubmit(interaction) {
         const descrizione = interaction.fields.getTextInputValue('descrizione');
 
+        // Rimuove @everyone e @here dalla descrizione inserita nel modal
+        const descrizioneSanitized = descrizione
+            .replace(/@everyone/g, '')
+            .replace(/@here/g, '')
+            .trim();
+
         const managerId   = interaction.customId.split('-')[1];
         const managerUser = managerId !== 'none'
             ? await interaction.client.users.fetch(managerId).catch(() => null)
@@ -58,7 +64,7 @@ module.exports = {
 
         // Salva il partner (senza title)
         config.partners.push({
-            description: descrizione,
+            description: descrizioneSanitized,
             manager:     managerUser ? managerUser.tag : null,
             author:      interaction.user.tag,
         });
@@ -89,7 +95,7 @@ module.exports = {
         }
 
         await targetChannel.send({
-            content: `${partnerRole ? `<@&${partnerRole}>` : ''}\n${descrizione}`.trim(),
+            content: `${partnerRole ? `<@&${partnerRole}>` : ''}\n${descrizioneSanitized}`.trim(),
             embeds: [embed]
         });
 
