@@ -109,6 +109,7 @@ const client = new Client({
 client.commands  = new Collection();
 client.cooldowns = new Collection();
 client.queues    = new Map();
+client.voiceConnections = new Map();
 client.config    = config;
 
 // ═══════════════════════════════════════════════════════
